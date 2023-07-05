@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES6",
+    "useDefineForClassFields": true,
+    "module": "CommonJS",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "baseUrl": ".",
+    "allowSyntheticDefaultImports": true,
+    /* Bundler mode */
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": false,
+    /* we use tsc only to emit type declerations build is by vite*/
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationDir": "types",
+    "outDir": "dist",
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false
+  },
+  "include": ["./tasks"],
+  "exclude": ["node_modules/**", "**/__tests__"]
+}
