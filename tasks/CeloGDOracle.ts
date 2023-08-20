@@ -5,18 +5,26 @@ import { RelayerParams } from 'defender-relay-client/lib/relayer';
 import { request, gql } from 'graphql-request';
 import axios from 'axios';
 
+const contracts = {
+  '44787': {
+    ORACLE: '0xFdd8bD58115FfBf04e47411c1d228eCC45E93075',
+    ORACLE_TOKEN: '0x03d3daB843e6c03b3d271eff9178e6A96c28D25f',
+  },
+  '42220': {
+    ORACLE: '0xefB84935239dAcdecF7c5bA76d8dE40b077B7b33',
+    ORACLE_TOKEN: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A',
+  },
+};
 // Entrypoint for the Autotask
 const RESERVE = '0xa150a825d425B36329D8294eeF8bD0fE68f8F6E0';
 const RESERVE_ABI = ['function currentPriceDAI() view returns (uint256)'];
-const ORACLE = '0xFdd8bD58115FfBf04e47411c1d228eCC45E93075';
 const ORACLE_ABI = [
   'function report(address token,uint256 value,address lesserKey,address greaterKey)',
   'function getRates(address token) view returns(address[],uint256[],uint8[])',
 ];
-const ORACLE_TOKEN = '0x03d3daB843e6c03b3d271eff9178e6A96c28D25f';
 
 const ethProvider = new ethers.providers.JsonRpcProvider('https://cloudflare-eth.com');
-const celoProvider = new ethers.providers.JsonRpcProvider('https://forno.celo.org');
+
 const getReservePrice = async () => {
   const reserve = new ethers.Contract(RESERVE, RESERVE_ABI, ethProvider);
   const curBlock = await ethProvider.getBlockNumber();
@@ -64,8 +72,9 @@ const getGraphPrice = async () => {
 };
 
 const reportOracle = async (average: ethers.BigNumber, oracle: ethers.Contract) => {
-  const oracleRO = new ethers.Contract(ORACLE, ORACLE_ABI, celoProvider);
+  const { chainId } = await oracle.provider.getNetwork();
   const signer = await oracle.signer.getAddress();
+  const ORACLE_TOKEN = contracts[chainId.toString()].ORACLE_TOKEN;
   const rates = await oracle.getRates(ORACLE_TOKEN);
   const [keys, values, medianRelations] = rates;
   const lastReportIndex = keys.findIndex((val) => val.toLowerCase() === signer.toLocaleLowerCase());
@@ -90,7 +99,7 @@ const reportOracle = async (average: ethers.BigNumber, oracle: ethers.Contract) 
       : ethers.constants.AddressZero;
 
   console.log({ insertIndex, keys, values, medianRelations, lesserKey, greaterKey });
-  await oracleRO.callStatic.report(ORACLE_TOKEN, average, lesserKey, greaterKey, { from: signer });
+  await oracle.callStatic.report(ORACLE_TOKEN, average, lesserKey, greaterKey, { from: signer });
   await oracle.report(ORACLE_TOKEN, average, lesserKey, greaterKey);
   return average;
 };
@@ -124,8 +133,9 @@ exports.handler = async function (event: AutotaskEvent) {
     // Initialize defender relayer provider and signer
     const provider = new DefenderRelayProvider(event as RelayerParams);
     const signer = new DefenderRelaySigner(event as RelayerParams, provider, { speed: 'fast' });
-    console.log({ signer });
-    const oracle = new ethers.Contract(ORACLE, ORACLE_ABI, signer);
+    const network = await provider.getNetwork();
+    console.log({ network });
+    const oracle = new ethers.Contract(contracts[network.chainId.toString()].ORACLE, ORACLE_ABI, signer);
     // Create contract instance from the signer and use it to send a tx
     const results = await Promise.allSettled([getReservePrice(), getGraphPrice()]);
     const averages = (

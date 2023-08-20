@@ -6,7 +6,8 @@
   "scripts": {
     "build": "rm -fr dist types && tsc && vite build",
     "test:oracle": "yarn build && node dist/CeloGDOracle/index.js",
-    "update:oracle": "yarn build && defender-autotask update-code c2f442dc-e72a-4394-808e-255862bb3cd9 dist/CeloGDOracle/",
+    "update:oracle:prod": "yarn build && defender-autotask update-code c2f442dc-e72a-4394-808e-255862bb3cd9 dist/CeloGDOracle/",
+    "update:oracle:dev": "yarn build && defender-autotask update-code 96fe7efc-4eb7-40e1-9a52-1daafe4fba27 dist/CeloGDOracle/",
     "tail:oracle": "defender-autotask tail-runs c2f442dc-e72a-4394-808e-255862bb3cd9",
     "run:oracle": "defender-autotask execute-run c2f442dc-e72a-4394-808e-255862bb3cd9",
     "vitetest": "vitest",
