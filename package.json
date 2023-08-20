@@ -12,9 +12,9 @@
     "vitetest": "vitest",
     "prepublish": "yarn version patch && yarn build",
     "publish": "yarn npm publish --access public",
-    "lint": "eslint .",
-    "format": "prettier -w ./src ",
-    "format:check": "prettier -c ./src"
+    "lint": "eslint ./tasks",
+    "format": "prettier -w ./tasks ",
+    "format:check": "prettier -c ./tasks"
   },
   "files": [
     "src",
