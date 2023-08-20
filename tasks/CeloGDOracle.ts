@@ -167,7 +167,7 @@ exports.handler = async function (event: AutotaskEvent) {
 
 // To run locally (this code will not be executed in Autotasks)
 if (require.main === module) {
-  const { API_KEY: apiKey, API_SECRET: apiSecret, CMC_KEY } = process.env;
+  const { RELAYER_KEY: apiKey, RELAYER_SECRET: apiSecret, CMC_KEY } = process.env;
   console.log({ apiKey, apiSecret });
   exports
     .handler({ apiKey, apiSecret, secrets: { CMC_KEY } })
