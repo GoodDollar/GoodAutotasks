@@ -1,4 +1,4 @@
-const { DefenderRelaySigner, DefenderRelayProvider } = require('openzeppelin/defender-relay-client/lib/ethers');
+const { DefenderRelaySigner, DefenderRelayProvider } = require('defender-relay-client/lib/ethers');
 const { ethers } = require('ethers');
 const axios = require('axios');
 const difference = (a, b) => a.filter((_) => !b.includes(_));
@@ -27,7 +27,8 @@ const bridges = {
 };
 
 const MpbBridgeABI = [
-  'function bridgeToWithLz(address target,uint256 targetChainId,uint256 amount,bytes adapterParams)',
+  'function bridgeToWithLz(address target,uint256 targetChainId,uint256 amount,bytes adapterParams) payable',
+  'function estimateSendFee(uint16,address,address,uint256,bool,bytes) view returns (uint nativeFee,uint zroFee)',
 ];
 
 const TokenBridgeABI = [
@@ -38,6 +39,7 @@ const TokenBridgeABI = [
 const ERC20ABI = [
   'function balanceOf(address owner) view returns (uint balance)',
   'function transferAndCall(address recipient,uint256 amount,bytes data) returns (bool success)',
+  'function approve(address spender,uint256 amount)',
 ];
 const fuseRpc = new ethers.providers.JsonRpcProvider('https://rpc.fuse.io');
 const celoRpc = new ethers.providers.JsonRpcProvider('https://forno.celo.org');
@@ -54,7 +56,7 @@ const handleError = async (msg) => {
 };
 
 const checkProductionBridgeBalance = async (bridge) => {
-  const FUSE_MIN_BRIDGE_BALANCE = 1500000;
+  const FUSE_MIN_BRIDGE_BALANCE = 5000000;
 
   const gd = new ethers.Contract(GD_FUSE, ERC20ABI, fuseRpc);
   const gdCelo = new ethers.Contract(GD_CELO, ERC20ABI, celoRpc);
@@ -87,21 +89,27 @@ const checkProductionBridgeBalance = async (bridge) => {
         const poorBridgeAddr = network === 122 ? bridge.celoBridge : bridge.fuseBridge;
 
         const amount = (network === 122 ? fuseBalance : celoBalance).mul(70).div(100); //bridge 70% of balance
-        const tx = await (await richBridge.withdraw(network === 122 ? gd.address : gdCelo.address, amount))
-          .wait()
-          .catch((e) => {
-            console.log('bridge withdraw failed:', e.message, e);
-            return { hash: 'failed' };
-          });
-        console.log('bridge withdraw result', tx);
+        let signerBalance = network === 122 ? await gd.balanceOf(signerAddr) : await gdCelo.balanceOf(signerAddr);
+        //if we already have some balance that we didnt send then skip withdraw
+        let tx;
+        if (signerBalance.eq(0)) {
+          console.log('withdrawing from microbridge:', amount.toString());
+          tx = await (await richBridge.withdraw(network === 122 ? gd.address : gdCelo.address, amount))
+            .wait()
+            .catch((e) => {
+              console.log('bridge withdraw failed:', e.message, e);
+              return { hash: 'failed' };
+            });
+          console.log('bridge withdraw result', tx);
+        }
 
-        const signerBalance = network === 122 ? await gd.balanceOf(signerAddr) : await gdCelo.balanceOf(signerAddr);
+        signerBalance = network === 122 ? await gd.balanceOf(signerAddr) : await gdCelo.balanceOf(signerAddr);
         console.log('signer balance:', signerBalance.div(100).toString());
 
         if (signerBalance.gt(0)) {
           // target chain, target address, withoutRelay
-          const lzAdapterParams = ethers.utils.solidityPack(['uint16', 'uint256'], [1, 300000]); // 300k gas to exec
-          const fee = await mpbBridge.estimateSendFee(
+          const lzAdapterParams = ethers.utils.solidityPack(['uint16', 'uint256'], [1, 400000]); // 400k gas to exec
+          const { nativeFee: fee } = await mpbBridge.estimateSendFee(
             network === 122 ? 125 : 138,
             signerAddr,
             signerAddr,
@@ -109,10 +117,26 @@ const checkProductionBridgeBalance = async (bridge) => {
             false,
             lzAdapterParams
           ); // except for chainid and lzadapter params the rest of vars do not matter
+
+          await (network === 122 ? gd : gdCelo).connect(SIGNER).approve(mpbBridge.address, signerBalance);
+          console.log(
+            'bridging via lz....',
+            poorBridgeAddr,
+            network === 122 ? 42220 : 122,
+            signerBalance.toString(),
+            lzAdapterParams,
+            { value: fee.toString() }
+          );
           const bridgeTx = await (
-            await mpbBridge.bridgeToWithLz(poorBridgeAddr, 42220, signerBalance, lzAdapterParams, { value: fee })
+            await mpbBridge.bridgeToWithLz(
+              poorBridgeAddr,
+              network === 122 ? 42220 : 122,
+              signerBalance,
+              lzAdapterParams,
+              { value: fee, gasLimit: 1e6 }
+            )
           ).wait();
-          balanceTxMsg = `Balanced bridges: withdraw tx: ${tx.hash} bridgeTx: ${bridgeTx.hash}`;
+          balanceTxMsg = `Balanced bridges: withdraw tx: ${tx?.transactionHash} bridgeTx: ${bridgeTx.transactionHash}`;
         }
       } catch (e: any) {
         balanceTxMsg = `Balancing bridges failed: ${e.message.slice(0, 100)}`;
